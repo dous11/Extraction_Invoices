@@ -72,11 +72,33 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Pre-download models when the app starts (optional)
+@st.cache_resource
+def preload_models():
+    if not os.path.exists(os.path.expanduser('~/.EasyOCR/model')):
+        with st.spinner('Downloading OCR models for first-time use...'):
+            easyocr.Reader(['en', 'fr'], gpu=False)  # Download CPU models
+            if torch.cuda.is_available():
+                easyocr.Reader(['en', 'fr'], gpu=True)  # Download GPU models
+
+# Call this when your app starts
+preload_models()
 # Initialisation du lecteur EasyOCR (mis en cache pour éviter de le recharger à chaque exécution)
 @st.cache_resource
 def load_ocr_reader():
-    return easyocr.Reader(['en', 'fr'], gpu=False)  # Charge le lecteur OCR pour l'anglais et le français, sans GPU
-
+    # Detect if CUDA is available
+    gpu_available = torch.cuda.is_available()
+    
+    if gpu_available:
+        st.success("🎉 GPU detected - Using hardware acceleration")
+    else:
+        st.warning("⚠️ No GPU detected - Falling back to CPU (slower performance)")
+    
+    return easyocr.Reader(
+        ['en', 'fr'], 
+        gpu=gpu_available,  # Automatically use GPU if available
+        download_enabled=True  # Ensure models can be downloaded
+    )
 # Variables globales de session pour stocker les résultats et états
 if 'extraction_results' not in st.session_state:
     st.session_state.extraction_results = None  # Résultats de l'extraction (données de la facture)
