@@ -15,7 +15,7 @@ import io  # Pour manipuler des flux d'entrée/sortie (ex. sauvegarde d'images)
 from pdf2image import convert_from_bytes  # Pour convertir des fichiers PDF en images
 import base64  # Pour encoder des fichiers (images, textes) en base64 pour téléchargement
 from PIL import Image  # Pour manipuler des images (conversion, sauvegarde)
-
+import torch  # Ajoutez ceci avec les autres imports
 # Configuration de la page Streamlit
 st.set_page_config(
     page_title="Invoice Data Extraction",  # Titre de la page web
@@ -359,42 +359,50 @@ def get_file_download_link(data, filename, text):
     return href
 
 if uploaded_file is not None:
-    if st.button("🔍 Analyser le document", key="analyze_btn"):
-        with st.spinner('Traitement en cours...'):
-        try:
-            # 1. Initialisation
-            reader = load_ocr_reader()
-            
-            # 2. Traitement fichier
-            image = process_file(uploaded_file)
-            st.session_state.image_preview = image.copy()
-            
-            # 3. OCR avec timeout
-            try:
-                with st.empty():
-                    st.info("Extraction texte en cours...")
-                    ocr_text, _ = ocr_image(image, reader)
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        if st.button("🔍 Analyser le document", key="analyze_btn"):
+            with st.spinner('Traitement en cours...'):
+                try:
+                    # 1. Initialisation
+                    reader = load_ocr_reader()
+                    
+                    # 2. Traitement fichier
+                    image = process_file(uploaded_file)
+                    st.session_state.image_preview = image.copy()
+                    
+                    # 3. OCR
+                    with st.empty():
+                        st.info("Extraction texte en cours...")
+                        try:
+                            ocr_text, _ = ocr_image(image, reader)
+                        except RuntimeError as e:
+                            if "CUDA" in str(e):
+                                st.warning("Redimensionnement pour économiser mémoire...")
+                                small_img = cv2.resize(image, (0,0), fx=0.5, fy=0.5)
+                                ocr_text, _ = ocr_image(small_img, reader)
+                            else:
+                                raise
+                    
                     st.session_state.ocr_text = ocr_text
-            except RuntimeError as e:
-                if "CUDA" in str(e):
-                    st.warning("Redimensionnement pour économiser mémoire...")
-                    small_img = cv2.resize(image, (0,0), fx=0.5, fy=0.5)
-                    ocr_text, _ = ocr_image(small_img, reader)
-                    st.session_state.ocr_text = ocr_text
-            
-            # 4. Extraction données
-            invoice_data = extract_invoice_data(ocr_text)
-            st.session_state.extraction_results = validate_results(invoice_data)
-            
-            st.success("✅ Analyse terminée!")
-            
-        except Exception as e:
-            st.error(f"Échec de l'analyse: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())  # Debug technique
+                    
+                    # 4. Extraction données
+                    invoice_data = extract_invoice_data(ocr_text)
+                    st.session_state.extraction_results = validate_results(invoice_data)
+                    
+                    st.success("✅ Analyse terminée!")
+                
+                except Exception as e:
+                    st.error(f"Échec de l'analyse: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
 
-    # Affiche les options supplémentaires
-    if uploaded_file is not None:
+    # Options supplémentaires
+    with col2:
+        st.markdown("### Options supplémentaires")
+        show_ocr = st.checkbox("Afficher le texte OCR brut", value=False)
+        show_debug = st.checkbox("Mode debug", value=False)
         with col2:
             st.markdown("### Options supplémentaires")
             show_ocr = st.checkbox("Afficher le texte OCR brut", value=False)  # Case pour afficher le texte OCR
