@@ -85,20 +85,51 @@ def preload_models():
 preload_models()
 # Initialisation du lecteur EasyOCR (mis en cache pour éviter de le recharger à chaque exécution)
 @st.cache_resource
+@st.cache_resource
 def load_ocr_reader():
-    # Detect if CUDA is available
-    gpu_available = torch.cuda.is_available()
+    try:
+        gpu_available = torch.cuda.is_available()
+        
+        # Initialize with basic English first if there are download issues
+        try:
+            reader = easyocr.Reader(
+                ['en', 'fr'], 
+                gpu=gpu_available,
+                download_enabled=True
+            )
+            if gpu_available:
+                st.success("🎉 GPU acceleration enabled")
+            return reader
+        except Exception as e:
+            st.warning(f"Model download failed, trying with English only: {str(e)}")
+            return easyocr.Reader(['en'], gpu=gpu_available)
+            
+    except Exception as e:
+        st.error(f"Failed to initialize OCR: {str(e)}")
+        st.stop()
+
+def check_environment():
+    st.sidebar.markdown("## Environment Check")
     
-    if gpu_available:
-        st.success("🎉 GPU detected - Using hardware acceleration")
-    else:
-        st.warning("⚠️ No GPU detected - Falling back to CPU (slower performance)")
-    
-    return easyocr.Reader(
-        ['en', 'fr'], 
-        gpu=gpu_available,  # Automatically use GPU if available
-        download_enabled=True  # Ensure models can be downloaded
-    )
+    # Check PyTorch
+    try:
+        import torch
+        if torch.cuda.is_available():
+            st.sidebar.success(f"PyTorch {torch.__version__} with CUDA")
+            st.sidebar.info(f"GPU: {torch.cuda.get_device_name(0)}")
+        else:
+            st.sidebar.warning("PyTorch - CUDA not available")
+    except Exception as e:
+        st.sidebar.error(f"PyTorch error: {str(e)}")
+
+    # Check EasyOCR
+    try:
+        import easyocr
+        st.sidebar.success("EasyOCR available")
+    except Exception as e:
+        st.sidebar.error(f"EasyOCR error: {str(e)}")
+
+check_environment()
 # Variables globales de session pour stocker les résultats et états
 if 'extraction_results' not in st.session_state:
     st.session_state.extraction_results = None  # Résultats de l'extraction (données de la facture)
