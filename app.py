@@ -15,14 +15,7 @@ import io  # Pour manipuler des flux d'entrée/sortie (ex. sauvegarde d'images)
 from pdf2image import convert_from_bytes  # Pour convertir des fichiers PDF en images
 import base64  # Pour encoder des fichiers (images, textes) en base64 pour téléchargement
 from PIL import Image  # Pour manipuler des images (conversion, sauvegarde)
-import torch
 
-# Vérification de l'environnement
-st.sidebar.markdown("### Configuration Matérielle")
-if torch.cuda.is_available():
-    st.sidebar.success(f"GPU disponible: {torch.cuda.get_device_name(0)}")
-else:
-    st.sidebar.warning("Aucun GPU détecté - Mode CPU")
 # Configuration de la page Streamlit
 st.set_page_config(
     page_title="Invoice Data Extraction",  # Titre de la page web
@@ -352,16 +345,11 @@ if uploaded_file is not None:
     col1, col2 = st.columns([1, 1])  # Crée deux colonnes pour organiser l'interface
     
     with col1:
-       if st.button("🔍 Analyser le document", key="analyze_btn"):
-          with st.spinner('Initialisation OCR...'):
-             try:
-                 reader = load_ocr_reader()
-            
-            # Afficher le mode utilisé
-                 if getattr(reader, 'gpu', False):
-                   st.success("Mode GPU activé - Analyse rapide")
-                 else:
-                    st.warning("Mode CPU activé - Analyse plus lente")
+        if st.button("🔍 Analyser le document", key="analyze_btn"):  # Bouton pour lancer l'analyse
+            with st.spinner('Traitement en cours...'):  # Affiche un indicateur de chargement
+                try:
+                    # Charge le lecteur OCR
+                    reader = load_ocr_reader()
                     
                     # Traite selon le type de fichier
                     file_extension = Path(uploaded_file.name).suffix.lower()  # Récupère l'extension du fichier
@@ -397,7 +385,7 @@ if uploaded_file is not None:
                     # Affiche un message de succès
                     st.success("Extraction terminée avec succès!")
                 
-             except Exception as e:
+                except Exception as e:
                     st.error(f"Une erreur s'est produite lors de l'analyse: {str(e)}")  # Affiche l'erreur si échec
 
     # Affiche les options supplémentaires
