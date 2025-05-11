@@ -15,7 +15,14 @@ import io  # Pour manipuler des flux d'entrée/sortie (ex. sauvegarde d'images)
 from pdf2image import convert_from_bytes  # Pour convertir des fichiers PDF en images
 import base64  # Pour encoder des fichiers (images, textes) en base64 pour téléchargement
 from PIL import Image  # Pour manipuler des images (conversion, sauvegarde)
+import torch
 
+# Vérification de l'environnement
+st.sidebar.markdown("### Configuration Matérielle")
+if torch.cuda.is_available():
+    st.sidebar.success(f"GPU disponible: {torch.cuda.get_device_name(0)}")
+else:
+    st.sidebar.warning("Aucun GPU détecté - Mode CPU")
 # Configuration de la page Streamlit
 st.set_page_config(
     page_title="Invoice Data Extraction",  # Titre de la page web
@@ -75,8 +82,26 @@ st.markdown("""
 # Initialisation du lecteur EasyOCR (mis en cache pour éviter de le recharger à chaque exécution)
 @st.cache_resource
 def load_ocr_reader():
-    return easyocr.Reader(['en', 'fr'], gpu=False)  # Charge le lecteur OCR pour l'anglais et le français, sans GPU
-
+    try:
+        import torch
+        # Vérification de la disponibilité GPU
+        gpu_available = torch.cuda.is_available()
+        
+        if gpu_available:
+            st.sidebar.success("GPU NVIDIA détecté - Accélération activée")
+            try:
+                # Essai avec GPU
+                return easyocr.Reader(['en', 'fr'], gpu=True)
+            except Exception as e:
+                st.sidebar.warning(f"Erreur GPU: {str(e)} - Basculé sur CPU")
+                return easyocr.Reader(['en', 'fr'], gpu=False)
+        else:
+            st.sidebar.warning("Aucun GPU détecté - Utilisation du CPU")
+            return easyocr.Reader(['en', 'fr'], gpu=False)
+            
+    except Exception as e:
+        st.error(f"Échec d'initialisation OCR: {str(e)}")
+        st.stop()
 # Variables globales de session pour stocker les résultats et états
 if 'extraction_results' not in st.session_state:
     st.session_state.extraction_results = None  # Résultats de l'extraction (données de la facture)
@@ -327,11 +352,16 @@ if uploaded_file is not None:
     col1, col2 = st.columns([1, 1])  # Crée deux colonnes pour organiser l'interface
     
     with col1:
-        if st.button("🔍 Analyser le document", key="analyze_btn"):  # Bouton pour lancer l'analyse
-            with st.spinner('Traitement en cours...'):  # Affiche un indicateur de chargement
-                try:
-                    # Charge le lecteur OCR
-                    reader = load_ocr_reader()
+       if st.button("🔍 Analyser le document", key="analyze_btn"):
+          with st.spinner('Initialisation OCR...'):
+             try:
+                 reader = load_ocr_reader()
+            
+            # Afficher le mode utilisé
+                 if getattr(reader, 'gpu', False):
+                   st.success("Mode GPU activé - Analyse rapide")
+                 else:
+                    st.warning("Mode CPU activé - Analyse plus lente")
                     
                     # Traite selon le type de fichier
                     file_extension = Path(uploaded_file.name).suffix.lower()  # Récupère l'extension du fichier
