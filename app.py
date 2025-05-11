@@ -358,13 +358,9 @@ def get_file_download_link(data, filename, text):
     href = f'<a href="data:file/txt;base64,{b64}" download="{filename}">{text}</a>'  # Crée le lien HTML
     return href
 
-# Bouton pour lancer l'analyse
 if uploaded_file is not None:
-    col1, col2 = st.columns([1, 1])  # Crée deux colonnes pour organiser l'interface
-    
-    with col1:
-   if st.button("🔍 Analyser"):
-    with st.spinner('Traitement...'):
+    if st.button("🔍 Analyser le document", key="analyze_btn"):
+        with st.spinner('Traitement en cours...'):
         try:
             # 1. Initialisation
             reader = load_ocr_reader()
