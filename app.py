@@ -72,28 +72,22 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialisation du lecteur EasyOCR (mis en cache pour éviter de le recharger à chaque exécution)
 @st.cache_resource
 def load_ocr_reader():
     try:
-        import torch
-        # Vérification de la disponibilité GPU
-        gpu_available = torch.cuda.is_available()
-        
-        if gpu_available:
-            st.sidebar.success("GPU NVIDIA détecté - Accélération activée")
+        # Vérifier si CUDA est disponible
+        if torch.cuda.is_available():
+            st.sidebar.success("⚡ GPU NVIDIA détecté")
             try:
-                # Essai avec GPU
                 return easyocr.Reader(['en', 'fr'], gpu=True)
-            except Exception as e:
-                st.sidebar.warning(f"Erreur GPU: {str(e)} - Basculé sur CPU")
+            except:
+                st.sidebar.warning("⚠️ Erreur GPU, basculement sur CPU")
                 return easyocr.Reader(['en', 'fr'], gpu=False)
         else:
-            st.sidebar.warning("Aucun GPU détecté - Utilisation du CPU")
+            st.sidebar.warning("🐢 CPU seul détecté")
             return easyocr.Reader(['en', 'fr'], gpu=False)
-            
     except Exception as e:
-        st.error(f"Échec d'initialisation OCR: {str(e)}")
+        st.error(f"💥 Erreur critique: {str(e)}")
         st.stop()
 # Variables globales de session pour stocker les résultats et états
 if 'extraction_results' not in st.session_state:
@@ -154,7 +148,31 @@ def ocr_image(image, reader):
     text = "\n".join(result)  # Concatène les résultats avec des sauts de ligne
     
     return text, preprocessed  # Retourne le texte OCR et l'image prétraitée
-
+def process_file(uploaded_file):
+    try:
+        # 1. Vérification fichier
+        if uploaded_file.size > 10_000_000:  # 10MB max
+            raise ValueError("Fichier trop volumineux")
+        
+        # 2. Conversion PDF/Image
+        if uploaded_file.type == "application/pdf":
+            images = convert_from_bytes(uploaded_file.read(), dpi=200)
+            if not images:
+                raise ValueError("Échec conversion PDF")
+            image = cv2.cvtColor(np.array(images[0]), cv2.COLOR_RGB2BGR)
+        else:
+            file_bytes = np.frombuffer(uploaded_file.read(), np.uint8)
+            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        
+        # 3. Vérification image
+        if image is None:
+            raise ValueError("Format d'image non supporté")
+            
+        return image
+    
+    except Exception as e:
+        st.error(f"Erreur traitement: {str(e)}")
+        st.stop()
 def extract_invoice_data(text):
     """
     Extrait les données clés de la facture à partir du texte OCR
@@ -345,48 +363,39 @@ if uploaded_file is not None:
     col1, col2 = st.columns([1, 1])  # Crée deux colonnes pour organiser l'interface
     
     with col1:
-        if st.button("🔍 Analyser le document", key="analyze_btn"):  # Bouton pour lancer l'analyse
-            with st.spinner('Traitement en cours...'):  # Affiche un indicateur de chargement
-                try:
-                    # Charge le lecteur OCR
-                    reader = load_ocr_reader()
-                    
-                    # Traite selon le type de fichier
-                    file_extension = Path(uploaded_file.name).suffix.lower()  # Récupère l'extension du fichier
-                    
-                    if file_extension == '.pdf':
-                        # Convertit le PDF en image
-                        image = convert_pdf_to_image(uploaded_file)
-                        if image is None:
-                            st.error("Impossible de convertir le PDF en image.")  # Affiche une erreur si échec
-                            st.stop()  # Arrête l'exécution
-                    else:
-                        # Lit l'image directement
-                        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-                        image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)  # Décode l'image en format OpenCV
-                    
-                    # Sauvegarde l'image pour prévisualisation
-                    preview_img = image.copy()
-                    st.session_state.image_preview = preview_img
-                    
-                    # Exécute l'OCR
-                    ocr_text, preprocessed_img = ocr_image(image, reader)
-                    st.session_state.ocr_text = ocr_text  # Stocke le texte OCR
-                    
-                    # Extrait les données de la facture
-                    invoice_data = extract_invoice_data(ocr_text)
-                    
-                    # Valide et corrige les données
-                    invoice_data = validate_results(invoice_data)
-                    
-                    # Stocke les résultats
-                    st.session_state.extraction_results = invoice_data
-                    
-                    # Affiche un message de succès
-                    st.success("Extraction terminée avec succès!")
-                
-                except Exception as e:
-                    st.error(f"Une erreur s'est produite lors de l'analyse: {str(e)}")  # Affiche l'erreur si échec
+   if st.button("🔍 Analyser"):
+    with st.spinner('Traitement...'):
+        try:
+            # 1. Initialisation
+            reader = load_ocr_reader()
+            
+            # 2. Traitement fichier
+            image = process_file(uploaded_file)
+            st.session_state.image_preview = image.copy()
+            
+            # 3. OCR avec timeout
+            try:
+                with st.empty():
+                    st.info("Extraction texte en cours...")
+                    ocr_text, _ = ocr_image(image, reader)
+                    st.session_state.ocr_text = ocr_text
+            except RuntimeError as e:
+                if "CUDA" in str(e):
+                    st.warning("Redimensionnement pour économiser mémoire...")
+                    small_img = cv2.resize(image, (0,0), fx=0.5, fy=0.5)
+                    ocr_text, _ = ocr_image(small_img, reader)
+                    st.session_state.ocr_text = ocr_text
+            
+            # 4. Extraction données
+            invoice_data = extract_invoice_data(ocr_text)
+            st.session_state.extraction_results = validate_results(invoice_data)
+            
+            st.success("✅ Analyse terminée!")
+            
+        except Exception as e:
+            st.error(f"Échec de l'analyse: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())  # Debug technique
 
     # Affiche les options supplémentaires
     if uploaded_file is not None:
