@@ -397,7 +397,7 @@ if uploaded_file is not None:
                     # Affiche un message de succès
                     st.success("Extraction terminée avec succès!")
                 
-                except Exception as e:
+             except Exception as e:
                     st.error(f"Une erreur s'est produite lors de l'analyse: {str(e)}")  # Affiche l'erreur si échec
 
     # Affiche les options supplémentaires
